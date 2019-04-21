@@ -1,0 +1,47 @@
+---
+title: "ForecastingProject"
+author: "Mduduzi Langwenya"
+date: "April 21, 2019"
+output: html_document
+---
+
+```{r cars}
+library(readxl); library(forecast)
+
+#import apple shipments
+apple_shipments <- read_excel("apple shipments.xlsx",sheet = "Data")
+
+#create time series object
+apple.ts <- ts(apple_shipments$`iPhone Unit Sales (M)`,start=c(2007,3),freq=4)
+
+# train train and test split
+train.ts <- window(apple.ts,start = c(2012, 1), end = c(2016,4))
+valid.ts <- window(apple.ts, start = c(2017, 1))
+
+#number of quarters ahead
+stepsAhead <- length(valid.ts)
+
+# fit linear trend and perform forecasts
+apple.lm <-  tslm(train.ts ~ trend + season)
+apple.lm.pred <- forecast(apple.lm, h = stepsAhead, level = 0)
+
+Acf(apple.lm.pred)
+
+#ETS 
+holtwinters.model <- ets(train.ts, model="MMM")
+onestepholtwinters.ts <- forecast(holtwinters.model, h = stepsAhead, level = 0)
+
+Acf(onestepholtwinters.ts)
+
+# ARIMA 
+
+
+
+#summary(holtwinters.model)
+plot(train.ts)
+lines(valid.ts, col = "blue")
+lines(onestepholtwinters.ts$mean, col =" red")
+lines(onestepholtwinters.ts$mean, col =" green")
+
+```
+
