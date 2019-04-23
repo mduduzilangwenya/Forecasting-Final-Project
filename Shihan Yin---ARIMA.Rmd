@@ -1,0 +1,100 @@
+---
+title: "Forecasting"
+author: "Shihan Yin"
+date: "4/21/2019"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(forecast)
+library(readxl)
+library(urca)
+library(tseries)
+library(zoo)
+```
+
+```{r}
+#load the time series
+apple_shipments <- read_excel("apple shipments.xlsx",sheet = "Data")
+apple.ts <- ts(apple_shipments$`iPhone Unit Sales (M)`,start=c(2007,3),freq=4)
+#focus on the growth rate
+apple.ts <- diff(log(apple.ts))
+plot(apple.ts)
+#split the training and validation dataset
+train.ts <- window(apple.ts, end = c(2016,4))
+valid.ts <- window(apple.ts, start = c(2017, 1))
+T <- length(apple.ts)
+T1 <- length(train.ts)
+stepsAhead <- length(valid.ts)
+
+#check for trend and seasonality using eyeball
+plot(apple.ts)
+
+#before conducting DF test, we need to deseasonalize the data
+#deseasonalize the data
+app.mod <- tslm(apple.ts ~ trend + season)
+appmean <- mean(apple.ts)
+appdes <- app.mod$residuals + appmean
+#add the trend back
+app.adjusted <- appdes + app.mod$coefficients[2]*(1:T)
+plot(app.adjusted)
+
+#Dickey-Fuller on trending 
+#considering that 59.5105 is larger than 9.31. We reject the null hypothesis. d =0.
+print(summary(ur.df(app.adjusted,type=c("trend"),selectlags="BIC")))
+
+#Augmented Dicky-Fuller
+#both methods indicate that the series is stationary
+adf.test(app.adjusted)
+```
+###Arima model
+```{r}
+#we conducted two models w/o trend to compare.
+#ARIMA without trend
+#auto tune based on bic
+forecast.mod <- auto.arima(train.ts,d=0,ic="bic",seasonal=TRUE)
+print(summary(forecast.mod))
+
+#one step ahead in validation
+valid.mod <- Arima(valid.ts, model = forecast.mod)
+
+#accuracy in validation period
+print(accuracy(valid.mod))
+
+#ARIMA with trend
+#ARMAX adding the trend
+train.ts<- data.frame(train.ts)
+colnames(train.ts) <- "sales"
+valid.ts<- data.frame(valid.ts)
+colnames(valid.ts) <- "sales"
+
+#check the best model parameters based on bic
+forecast.mod.up <- auto.arima(train.ts[,"sales"],d=0,ic="bic",seasonal=TRUE,xreg = 1:T1)
+print(summary(forecast.mod.up))
+#conduct best Arima model with trend on training dataset
+forecast.mod.upf <- Arima(train.ts[,"sales"],order=c(2,0,0),seasonal = list(order = c(1,0,0), period = 4),xreg=1:T1)
+
+#one step ahead in validation
+onestep.mod <- Arima(valid.ts[,"sales"], xreg=(T1+1):T, model=forecast.mod.upf)
+
+#accuracy in validation period
+print(accuracy(onestep.mod))
+
+#compare the two forecasts in the plot
+train.ts <- window(apple.ts, end = c(2016,4))
+valid.ts <- window(apple.ts, start = c(2017, 1))
+plot(onestep.mod$fitted, xlim=c(2015, 2018),col = "red")
+lines(valid.mod$fitted,col = "blue")
+lines(valid.ts)
+lines(train.ts)
+
+#DM tests to compare this two forecasts
+print(dm.test(valid.mod$residuals,onestep.mod$residuals,alternative="less"))
+```
+
+We can see that Arima model with trend has a higher accuracy.
+
